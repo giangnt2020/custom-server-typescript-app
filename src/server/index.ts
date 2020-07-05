@@ -2,14 +2,15 @@ import next from "next";
 import express from "express";
 import { createProxyMiddleware, Options } from "http-proxy-middleware";
 import session from "express-session";
-import connectMongo from "connect-mongo";
-import { v4 as uuidv4 } from "uuid";
 import * as config from "./configs/config";
 import * as oauth2 from "./libs/oauth2";
 import axios from "axios";
 import qs from "qs";
 import { CLIENT_INFO } from "./configs/config";
 import connectDynamodb from "connect-dynamodb";
+// import { useAuth } from '../providers/Auth';
+
+const SESSION_MAX_AGE = process.env.SESSION_MAX_AGE ? parseInt(process.env.SESSION_MAX_AGE) : 12 * 60 * 60 * 1000 // = 12 hours = 43200 seconds
 
 const server = express()
 const port = parseInt(process.env.PORT || '3000', 10)
@@ -17,13 +18,23 @@ const dev = process.env.NODE_ENV !== 'production'
 const app = next({ dev })
 const handle = app.getRequestHandler()
 
-const MongoStore = connectMongo(session)
-const store = new MongoStore({
-  url: 'mongodb://localhost/test-app',
-  // ttl: 14 * 24 * 60 * 60, // = 14 days. Default
-  ttl: 12 * 60 * 60, // = 12 hours
-  stringify: false
-});
+const dynamodbOptions = {
+  // Optional DynamoDB table name, defaults to 'sessions'
+  table: 'custom-server-sessions',
+
+  // Optional JSON object of AWS credentials and configuration
+  AWSConfigJSON: {
+      accessKeyId: process.env.ACCESS_KEY_ID,
+      secretAccessKey: process.env.SECRET_ACCESS_KEY,
+      region: 'ap-northeast-1'
+  },
+
+  // Optional ProvisionedThroughput params, defaults to 5
+  readCapacityUnits: 10,
+  writeCapacityUnits: 10
+}
+const DynamoDBStore = connectDynamodb(session);
+const store = new DynamoDBStore(dynamodbOptions);
 
 interface ICustomProxy {
   context: string,
@@ -50,12 +61,13 @@ const getTokenKabucom = (req: any, res: any) => {
       'Content-Type': 'application/x-www-form-urlencoded'
     }
   }).then(result => {
-    const hour = 12 * 60 * 60 * 1000 // millisecond
+    const hour = SESSION_MAX_AGE
     req.session!.cookie.expires = new Date(Date.now() + hour)
     req.session!.cookie.maxAge = hour
     req.session!.domain = "kabucom"
     req.session!.token = result.data
     req.session!.access_token_expires = new Date(Date.now() + result.data["expires_in"] * 1000)
+    res.cookie("session", "1")
     res.redirect("/")
   }).catch((err) => {
     const message = err.response ? err.response.data.error_description || err.response.message : err.message
@@ -86,7 +98,7 @@ const customProxies: ICustomProxy[] = [
     options: {
       target: "https://prod.rest.api.kabu.co.jp/v1",
       pathRewrite: async (path, req) => {
-        const expires = req.session!.access_token_expires;
+        const expires = new Date(req.session!.access_token_expires);
         const current = new Date();
         if (current >= expires && req.session!.token["refresh_token"]) {
           const getNewAccessToken = await refreshToken(req.session!.token["refresh_token"])
@@ -132,13 +144,10 @@ app.prepare()
         secret: 'supper_power_secret',
         store,
         proxy: true,
-        genid: () => {
-          return uuidv4()
-        },
         cookie: {
           secure: !dev,
           httpOnly: !dev,
-          maxAge: 12 * 60 * 60 // = 12 hours
+          maxAge: SESSION_MAX_AGE
         },
       })
     )
@@ -156,10 +165,11 @@ app.prepare()
       )
     })
 
-    server.get('/logout', (req, res, _next) => {
+    server.get('/api/logout', (req, res, _next) => {
       req.session!.destroy(() => {
         res.clearCookie('connect.sid', {});
-        res.redirect("/");
+        res.clearCookie('session');
+        res.status(200).end();
       })
     })
 

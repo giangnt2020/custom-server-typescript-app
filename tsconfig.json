@@ -33,6 +33,6 @@
   "include": [
     "next-env.d.ts",
     "**/*.ts",
-    "**/*.tsx", "server/index.ts.bk"
+    "**/*.tsx", "server/index.ts"
   ]
 }

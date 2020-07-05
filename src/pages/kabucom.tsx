@@ -1,3 +1,5 @@
+import Layout from "../components/Layout";
+import withAuth from "../hocs/withAuth";
 import Link from "next/link";
 
 interface API {
@@ -8,14 +10,6 @@ interface API {
 const kabucom = "/api/kabucom";
 
 const apiList: API[] = [
-  {
-    name: "OAuth 2.0 Login (Kabucom)",
-    endpoint: "/oauth2/login",
-  },
-  {
-    name: "Log out",
-    endpoint: "/logout",
-  },
   {
     name: "/chart-leg/index",
     endpoint: `${kabucom}/chart-leg/index?ticket=101@T&legtype=1M&count=10`,
@@ -52,12 +46,14 @@ const CustomLink = (api: API) => {
   );
 };
 
-export default function Home() {
+export default withAuth(function Home() {
   return (
-    <ul>
-      {apiList.map((api) => {
-        return CustomLink(api);
-      })}
-    </ul>
+    <Layout>
+      <ul>
+        {apiList.map((api) => {
+          return CustomLink(api);
+        })}
+      </ul>
+    </Layout>
   );
-}
+});
