@@ -4,11 +4,11 @@ import { createProxyMiddleware, Options } from "http-proxy-middleware";
 import session from "express-session";
 import * as config from "./configs/config";
 import * as oauth2 from "./libs/oauth2";
+import * as google from "./libs/google";
 import axios from "axios";
 import qs from "qs";
 import { CLIENT_INFO } from "./configs/config";
 import connectDynamodb from "connect-dynamodb";
-// import { useAuth } from '../providers/Auth';
 
 const SESSION_MAX_AGE = process.env.SESSION_MAX_AGE ? parseInt(process.env.SESSION_MAX_AGE) : 12 * 60 * 60 * 1000 // = 12 hours = 43200 seconds
 
@@ -24,9 +24,9 @@ const dynamodbOptions = {
 
   // Optional JSON object of AWS credentials and configuration
   AWSConfigJSON: {
-      accessKeyId: process.env.ACCESS_KEY_ID,
-      secretAccessKey: process.env.SECRET_ACCESS_KEY,
-      region: 'ap-northeast-1'
+    accessKeyId: process.env.ACCESS_KEY_ID,
+    secretAccessKey: process.env.SECRET_ACCESS_KEY,
+    region: 'ap-northeast-1'
   },
 
   // Optional ProvisionedThroughput params, defaults to 5
@@ -67,6 +67,7 @@ const getTokenKabucom = (req: any, res: any) => {
     req.session!.domain = "kabucom"
     req.session!.token = result.data
     req.session!.access_token_expires = new Date(Date.now() + result.data["expires_in"] * 1000)
+    console.log(req.session)
     res.cookie("session", "1")
     res.redirect("/")
   }).catch((err) => {
@@ -74,6 +75,39 @@ const getTokenKabucom = (req: any, res: any) => {
     res.status(400).json({ message })
   });
 }
+
+const getTokenByClientCredential = (req: any, res: any) => {
+  const data = qs.stringify({
+    'grant_type': 'client_credentials',
+    'scope': 'kabu.com_api_v1:master kabu.com_api_v1:market'
+  });
+
+  axios({
+    method: 'post',
+    url: 'https://prodacc-login-oidc.kabu.co.jp/oauth2/token',
+    headers: {
+      'Authorization': "Basic " + Buffer.from(`${config.CLIENT_INFO.clientId}:${config.CLIENT_INFO.clientSecret}`).toString("base64"),
+      'Content-Type': 'application/x-www-form-urlencoded',
+      // 'Cookie': 'MAREQUESTURL=/members; MASESSIONID=0'
+    },
+    data
+  })
+    .then(function (result) {
+      const hour = SESSION_MAX_AGE
+      req.session!.cookie.expires = new Date(Date.now() + hour)
+      req.session!.cookie.maxAge = hour
+      req.session!.domain = "kabucom"
+      req.session!.token = result.data
+      req.session!.access_token_expires = new Date(Date.now() + result.data["expires_in"] * 1000)
+      console.log(req.session)
+      res.cookie("session", "1")
+      res.redirect("/")
+    })
+    .catch((err) => {
+      const message = err.response ? err.response.data.error_description || err.response.message : err.message
+      res.status(400).json({ message })
+    });
+};
 
 const refreshToken = async (token: string): Promise<any> => {
   const data = qs.stringify({
@@ -179,6 +213,50 @@ app.prepare()
 
     server.get("/oauth2/callback", (req, res) => {
       getTokenKabucom(req, res);
+    });
+
+    server.get("/api/login/guest", (req, res) => {
+      getTokenByClientCredential(req, res);
+    });
+
+    server.get("/api/login/google", (_req, res) => {
+      res.redirect(google.googleLoginUrl);
+    });
+
+    server.get("/oauth2/callback/google", async (req, res) => {
+      // getTokenKabucom(req, res);
+      const code = req.query.code ? req.query.code.toString() : ""
+      try {
+        const result = await google.getAccessTokenFromCode(code)
+        const hour = SESSION_MAX_AGE
+        req.session!.cookie.expires = new Date(Date.now() + hour)
+        req.session!.cookie.maxAge = hour
+        req.session!.domain = "google"
+        req.session!.token = result.data
+        req.session!.access_token_expires = new Date(Date.now() + result.data["expires_in"] * 1000)
+        console.log(req.session)
+        res.cookie("session", "1")
+        res.redirect("/")
+      } catch (err) {
+        res.status(400).json({ message: err.message })
+      }
+
+    });
+
+    server.get("/oauth2/v2/userinfo", async (req, res) => {
+      try {
+      const { data } = await axios({
+        url: 'https://www.googleapis.com/oauth2/v2/userinfo',
+        method: 'get',
+        headers: {
+          Authorization: `Bearer ${req.session!.token["access_token"]}`,
+        },
+      });
+      // console.log(data); // { id, email, given_name, family_name }
+      res.status(200).send(data)
+    } catch (err) {
+      res.status(400).json({ message: err.message })
+    }
     });
 
     // Default catch-all handler to allow Next.js to handle all other routes

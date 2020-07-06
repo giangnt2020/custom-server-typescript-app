@@ -1,7 +1,7 @@
-import {config as configDotenv} from 'dotenv'
-import {resolve} from 'path'
+import { config as configDotenv } from 'dotenv'
+import { resolve } from 'path'
 
-switch(process.env.NODE_ENV) {
+switch (process.env.NODE_ENV) {
   case "development":
     console.log("Environment is 'development'")
     configDotenv({
@@ -37,3 +37,12 @@ export const CLIENT_INFO = {
 }
 
 export const verifierCode = "YXWneoMBai5jnxLmEwibHnOH49wQYv1sGw_DSJ9plvI"
+
+export const GOOGLE_CLIENT_INFO = {
+  clientId: "935385466173-306om2s910g0s8f9alr7vu7dmfffmts6.apps.googleusercontent.com",
+  projectId: "custom-server-sample",
+  authUri: "https://accounts.google.com/o/oauth2/auth",
+  tokenUri: "https://oauth2.googleapis.com/token",
+  clientSecret: "vDO2dWvdWCp4hOD67PWpE6wH",
+  redirectUri: "http://localhost:3000/oauth2/callback/google"
+}

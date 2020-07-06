@@ -11,8 +11,16 @@ export default function Header() {
       |{' '}
       {isAuthenticated ? (
         <>
+        <Link href="/profile">
+            <a>Profile</a>
+          </Link>{' '}
+          |{' '}
           <Link href="/kabucom">
-            <a>Kabucom API</a>
+            <a>Kabucom APIs</a>
+          </Link>{' '}
+          |{' '}
+          <Link href="/googleapis">
+            <a>Google APIs</a>
           </Link>{' '}
           |{' '}
           <Link href="/logout">

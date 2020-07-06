@@ -1,7 +1,7 @@
 import React, { ReactElement } from 'react';
 import App, { AppInitialProps } from 'next/app';
 import cookie from 'cookie';
-import { CookieMessage } from '../@types';
+import { CookieMessage } from '../@types/index';
 import { AuthProvider } from '../providers/Auth';
 
 type AppProps = {

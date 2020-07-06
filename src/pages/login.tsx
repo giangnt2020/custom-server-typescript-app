@@ -15,14 +15,14 @@ export default withoutAuth(function Login() {
         </li>
         <p />
         <li>
-          <Link href="#" as="#">
+          <Link href="/api/login/guest">
             <button>Guest</button>
           </Link>
         </li>
         <p />
 
         <li>
-          <Link href="#" as="#">
+          <Link href="/api/login/google">
             <button>Login with Google</button>
           </Link>
         </li>
