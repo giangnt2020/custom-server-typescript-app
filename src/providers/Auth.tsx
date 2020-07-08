@@ -1,14 +1,19 @@
-import React, { ReactNode, ReactElement } from 'react';
+import React, { ReactNode, ReactElement } from "react";
 
 type AuthContext = {
+  userType: number;
+  setUserType: React.Dispatch<React.SetStateAction<number>>;
   isAuthenticated: boolean;
   setAuthenticated: React.Dispatch<React.SetStateAction<boolean>>;
 };
 
 const AuthContext = React.createContext<AuthContext>({
+  userType: -1,
+  // eslint-disable-next-line @typescript-eslint/no-empty-function
+  setUserType: () => {},
   isAuthenticated: false,
   // eslint-disable-next-line @typescript-eslint/no-empty-function
-  setAuthenticated: () => {}
+  setAuthenticated: () => {},
 });
 
 /**
@@ -19,19 +24,24 @@ const AuthContext = React.createContext<AuthContext>({
  */
 export const AuthProvider = ({
   children,
-  authenticated
+  userType,
+  authenticated,
 }: {
   children: ReactNode;
+  userType: number;
   authenticated: boolean;
 }): ReactElement => {
   const [isAuthenticated, setAuthenticated] = React.useState<boolean>(
     authenticated
   );
+  const [nUserType, setUserType] = React.useState<number>(userType);
   return (
     <AuthContext.Provider
       value={{
+        userType: nUserType,
+        setUserType,
         isAuthenticated,
-        setAuthenticated
+        setAuthenticated,
       }}
     >
       {children}
@@ -42,7 +52,7 @@ export const AuthProvider = ({
 export function useAuth(): AuthContext {
   const context = React.useContext(AuthContext);
   if (context === undefined) {
-    throw new Error('useAuth must be used within an AuthProvider');
+    throw new Error("useAuth must be used within an AuthProvider");
   }
   return context;
 }
@@ -50,4 +60,9 @@ export function useAuth(): AuthContext {
 export function useIsAuthenticated(): boolean {
   const context = useAuth();
   return context.isAuthenticated;
+}
+
+export function useUserType(): number {
+  const context = useAuth();
+  return context.userType;
 }

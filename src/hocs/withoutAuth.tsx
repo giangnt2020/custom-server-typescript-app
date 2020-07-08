@@ -17,7 +17,7 @@ export default function withoutAuth<P>(
       return useIsAuthenticated();
     },
     serverCondition: function withoutAuthServerCondition(ctx) {
-      return !!ctx.req?.cookies.session;
+      return !!ctx.req?.cookies.authenticated;
     }
   });
 }

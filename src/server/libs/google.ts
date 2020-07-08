@@ -30,3 +30,18 @@ export async function getAccessTokenFromCode(code: string) {
   });
   return result;
 };
+
+export async function  refreshToken(token: string): Promise<any> {
+  const data = qs.stringify({
+    client_id: GOOGLE_CLIENT_INFO.clientId,
+      client_secret: GOOGLE_CLIENT_INFO.clientSecret,
+    grant_type: 'refresh_token',
+    refresh_token: token
+  });
+  let res = await axios({
+    method: 'post',
+    url: `https://oauth2.googleapis.com/token`,
+    data
+  })
+  return res;
+};

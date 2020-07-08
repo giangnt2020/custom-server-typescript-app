@@ -3,11 +3,16 @@ import withoutAuth from "../hocs/withoutAuth";
 import Link from "next/link";
 
 export default withoutAuth(function Login() {
-  // const { setAuthenticated } = useAuth();
   return (
     <>
       <h3>Login</h3>
       <ul>
+      <li>
+          <Link href="/api/login/guest">
+            <button>Guest</button>
+          </Link>
+        </li>
+        <p />
         <li>
           <Link href="/oauth2/login" as="/oauth2/login">
             <button>Login with Kabucom Account</button>
@@ -15,24 +20,16 @@ export default withoutAuth(function Login() {
         </li>
         <p />
         <li>
-          <Link href="/api/login/guest">
-            <button>Guest</button>
-          </Link>
-        </li>
-        <p />
-
-        <li>
           <Link href="/api/login/google">
             <button>Login with Google</button>
           </Link>
         </li>
         <p />
-
-        <li>
+        {/* <li>
           <Link href="#" as="#">
             <button>Login with Apple</button>
           </Link>
-        </li>
+        </li> */}
       </ul>
     </>
   );

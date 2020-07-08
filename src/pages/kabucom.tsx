@@ -1,6 +1,8 @@
+import React from "react";
 import Layout from "../components/Layout";
 import withAuth from "../hocs/withAuth";
 import Link from "next/link";
+import { useAuth } from "../providers/Auth";
 
 interface API {
   name: string;
@@ -67,38 +69,75 @@ const apiList2: API[] = [
   // },
 ];
 
-const CustomLink = (api: API) => {
+const CustomLink = (api: API, handleClick : any) => { 
   return (
     <li key={api.endpoint} style={{ marginTop: "20px" }}>
-      <Link href={api.endpoint} as={api.endpoint}>
+      {/* <Link href={api.endpoint} as={api.endpoint}>
         <a>{api.name}</a>
-      </Link>
+      </Link> */}
+      <button onClick={() => handleClick(`${api.endpoint}`)}>{api.name}</button>
     </li>
   );
 };
 
-export default withAuth(function KabucomAPI() {
+function KabucomAPI({initialData}: {initialData: any}) {
+  const { userType } = useAuth();
+  const [data, setData] = React.useState(initialData);
+  const fetchData = (endpoint: string) => {
+    fetch(endpoint)
+    .then(async (res) => {
+      const newData = await res.json();
+      setData(newData)
+    })
+    .catch((err)=> {
+      console.log(err)
+    })
+  };
+
+  const handleClick = (endpoint: string) => {
+    console.log("handleClick -> endpoint: ", endpoint)
+    setData("loading...")
+    fetchData(endpoint);
+  };
+
   return (
     <Layout>
-      <h3>Client credential grant</h3>
-      <p>master: Acquires the brand master information</p>
-      <p>market: Acquires the market price information</p>
-      {/* <p>system:	Get data with system privileges</p>
+      {(userType === 0 || userType === 1) && (
+        <>
+          <h3>Client credential grant</h3>
+          <p>master: Acquires the brand master information</p>
+          <p>market: Acquires the market price information</p>
+          {/* <p>system:	Get data with system privileges</p>
       <p>streaming_marketdata:	Market price information streaming</p> */}
-      <ul>
-        {apiList1.map((api) => {
-          return CustomLink(api);
-        })}
-      </ul>
+          <ul>
+            {apiList1.map((api) => {
+              return CustomLink(api, handleClick);
+            })}
+          </ul>
+        </>
+      )}
+      {userType === 1 && (
+        <>
+          <hr />
+          <h3>Authorization code grant</h3>
+          <p>account: Refer to your account information</p>
+          {/* <p>wallet Refers to the customer's possible amount</p> */}
+          <ul>
+            {apiList2.map((api) => {
+              return CustomLink(api, handleClick);
+            })}
+          </ul>
+        </>
+      )}
       <hr />
-      <h3>Authorization code grant</h3>
-      <p>account: Refer to your account information</p>
-      {/* <p>wallet Refers to the customer's possible amount</p> */}
-      <ul>
-        {apiList2.map((api) => {
-          return CustomLink(api);
-        })}
-      </ul>
+      <textarea
+        rows={20}
+        style={{ width: "80%" }}
+        value={JSON.stringify(data, null, 2)}
+        readOnly
+      ></textarea>
     </Layout>
   );
-});
+}
+
+export default withAuth(KabucomAPI);

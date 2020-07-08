@@ -2,11 +2,8 @@ import next from "next";
 import express from "express";
 import { createProxyMiddleware, Options } from "http-proxy-middleware";
 import session from "express-session";
-import * as config from "./configs/config";
 import * as oauth2 from "./libs/oauth2";
 import * as google from "./libs/google";
-import axios from "axios";
-import qs from "qs";
 import { CLIENT_INFO } from "./configs/config";
 import connectDynamodb from "connect-dynamodb";
 
@@ -44,88 +41,6 @@ const MESSAGES = {
   error404: "The request has not been applied because it lacks valid authentication credentials for the target resource."
 }
 
-const getTokenKabucom = (req: any, res: any) => {
-  const data = qs.stringify({
-    grant_type: config.CLIENT_INFO.grantType,
-    code: req.query.code,
-    redirect_uri: config.CLIENT_INFO.callbackUrl,
-    code_verifier: config.verifierCode,
-    client_id: config.CLIENT_INFO.clientId
-  })
-  axios({
-    method: 'post',
-    url: oauth2.getTokenURI(),
-    data,
-    headers: {
-      'Authorization': "Basic " + Buffer.from(`${config.CLIENT_INFO.clientId}:${config.CLIENT_INFO.clientSecret}`).toString("base64"),
-      'Content-Type': 'application/x-www-form-urlencoded'
-    }
-  }).then(result => {
-    const hour = SESSION_MAX_AGE
-    req.session!.cookie.expires = new Date(Date.now() + hour)
-    req.session!.cookie.maxAge = hour
-    req.session!.domain = "kabucom"
-    req.session!.token = result.data
-    req.session!.access_token_expires = new Date(Date.now() + result.data["expires_in"] * 1000)
-    console.log(req.session)
-    res.cookie("session", "1")
-    res.redirect("/")
-  }).catch((err) => {
-    const message = err.response ? err.response.data.error_description || err.response.message : err.message
-    res.status(400).json({ message })
-  });
-}
-
-const getTokenByClientCredential = (req: any, res: any) => {
-  const data = qs.stringify({
-    'grant_type': 'client_credentials',
-    'scope': 'kabu.com_api_v1:master kabu.com_api_v1:market'
-  });
-
-  axios({
-    method: 'post',
-    url: 'https://prodacc-login-oidc.kabu.co.jp/oauth2/token',
-    headers: {
-      'Authorization': "Basic " + Buffer.from(`${config.CLIENT_INFO.clientId}:${config.CLIENT_INFO.clientSecret}`).toString("base64"),
-      'Content-Type': 'application/x-www-form-urlencoded',
-      // 'Cookie': 'MAREQUESTURL=/members; MASESSIONID=0'
-    },
-    data
-  })
-    .then(function (result) {
-      const hour = SESSION_MAX_AGE
-      req.session!.cookie.expires = new Date(Date.now() + hour)
-      req.session!.cookie.maxAge = hour
-      req.session!.domain = "kabucom"
-      req.session!.token = result.data
-      req.session!.access_token_expires = new Date(Date.now() + result.data["expires_in"] * 1000)
-      console.log(req.session)
-      res.cookie("session", "1")
-      res.redirect("/")
-    })
-    .catch((err) => {
-      const message = err.response ? err.response.data.error_description || err.response.message : err.message
-      res.status(400).json({ message })
-    });
-};
-
-const refreshToken = async (token: string): Promise<any> => {
-  const data = qs.stringify({
-    grant_type: 'refresh_token',
-    refresh_token: token
-  });
-  let res = await axios({
-    method: 'post',
-    url: oauth2.getTokenURI(),
-    data,
-    headers: {
-      'Authorization': "Basic " + Buffer.from(`${config.CLIENT_INFO.clientId}:${config.CLIENT_INFO.clientSecret}`).toString("base64"),
-      'Content-Type': 'application/x-www-form-urlencoded'
-    }
-  })
-  return res;
-}
-
 const customProxies: ICustomProxy[] = [
   {
     context: "/api/kabucom",
@@ -134,12 +49,17 @@ const customProxies: ICustomProxy[] = [
       pathRewrite: async (path, req) => {
         const expires = new Date(req.session!.access_token_expires);
         const current = new Date();
-        if (current >= expires && req.session!.token["refresh_token"]) {
-          const getNewAccessToken = await refreshToken(req.session!.token["refresh_token"])
-          if (getNewAccessToken.data && getNewAccessToken.data["expires_in"]) {
-            req.session!.token["access_token"] = getNewAccessToken.data["access_token"]
-            req.session!.token["expires_in"] = getNewAccessToken.data["expires_in"]
-            req.session!.access_token_expires = new Date(Date.now() + getNewAccessToken.data["expires_in"] * 1000)
+        const cookiesExpires = new Date(req.session!.cookie.expires.toString());
+        if (current < cookiesExpires && current >= expires && req.session!.token["refresh_token"]) {
+          try {
+            const getNewAccessToken = await oauth2.refreshToken(req.session!.token["refresh_token"])
+            if (getNewAccessToken.data && getNewAccessToken.data["expires_in"]) {
+              req.session!.token["access_token"] = getNewAccessToken.data["access_token"]
+              req.session!.token["expires_in"] = getNewAccessToken.data["expires_in"]
+              req.session!.access_token_expires = new Date(Date.now() + getNewAccessToken.data["expires_in"] * 1000)
+            }
+          } catch (err) {
+            throw new Error(JSON.stringify(req.session!.cookie.expires));
           }
         }
         return path.replace('/api/kabucom', '');
@@ -167,7 +87,43 @@ const customProxies: ICustomProxy[] = [
       },
       changeOrigin: true
     }
-  }
+  },
+  {
+    context: "/api/google",
+    options: {
+      target: "https://www.googleapis.com",
+      pathRewrite: async (path, req) => {
+        const expires = new Date(req.session!.access_token_expires);
+        const current = new Date();
+        const cookiesExpires = new Date(req.session!.cookie.expires.toString());
+        if (current < cookiesExpires && current >= expires && req.session!.token["refresh_token"]) {
+          try {
+            const getNewAccessToken = await google.refreshToken(req.session!.token["refresh_token"])
+            if (getNewAccessToken.data && getNewAccessToken.data["expires_in"]) {
+              req.session!.token["access_token"] = getNewAccessToken.data["access_token"]
+              req.session!.token["expires_in"] = getNewAccessToken.data["expires_in"]
+              req.session!.access_token_expires = new Date(Date.now() + getNewAccessToken.data["expires_in"] * 1000)
+            }
+          } catch (err) {
+            throw new Error(JSON.stringify(req.session!.cookie.expires));
+          }
+        }
+        return path.replace('/api/google', '');
+      },
+      changeOrigin: true,
+      onProxyReq: (proxyReq, req, res) => {
+        // add custom header to request
+        proxyReq.setHeader("accept", "*/*");
+        proxyReq.setHeader("x-api-key", CLIENT_INFO.apiKey);
+        if (req.session!.token) {
+          proxyReq.setHeader("authorization", `Bearer ${req.session!.token["access_token"]}`);
+        } else {
+          res.status(401).json({ message: MESSAGES.error404 })
+        }
+      },
+      logLevel: "debug"
+    }
+  },
 ]
 
 app.prepare()
@@ -178,6 +134,7 @@ app.prepare()
         secret: 'supper_power_secret',
         store,
         proxy: true,
+        resave: false,
         cookie: {
           secure: !dev,
           httpOnly: !dev,
@@ -202,8 +159,8 @@ app.prepare()
     server.get('/api/logout', (req, res, _next) => {
       req.session!.destroy(() => {
         res.clearCookie('connect.sid', {});
-        res.clearCookie('session');
-        res.status(200).end();
+        res.clearCookie('authenticated');
+        setTimeout(() => res.status(200).end(), 1000);
       })
     })
 
@@ -212,11 +169,52 @@ app.prepare()
     });
 
     server.get("/oauth2/callback", (req, res) => {
-      getTokenKabucom(req, res);
+      const code = req.query.code ? req.query.code.toString() : ""
+      const getToken = oauth2.getTokenFromCode(code)
+      getToken.then((result) => {
+        const hour = SESSION_MAX_AGE
+        req.session!.cookie.expires = new Date(Date.now() + hour)
+        req.session!.cookie.maxAge = hour
+        req.session!.domain = "kabucom"
+        req.session!.token = result.data
+        req.session!.access_token_expires = new Date(Date.now() + result.data["expires_in"] * 1000)
+        req.session?.save((err) => {
+          if (!err) {
+            res.cookie("authenticated", "1")
+            res.redirect("/kabucom")
+          } else {
+            res.status(400).json({ message: err })
+          }
+        })
+      })
+        .catch((err) => {
+          const message = err.response ? err.response.data.error_description || err.response.message : err.message
+          res.status(400).json({ message })
+        });
     });
 
     server.get("/api/login/guest", (req, res) => {
-      getTokenByClientCredential(req, res);
+      const getToken = oauth2.getTokenByClientCredential();
+      getToken.then((result) => {
+        const hour = SESSION_MAX_AGE
+        req.session!.cookie.expires = new Date(Date.now() + hour)
+        req.session!.cookie.maxAge = hour
+        req.session!.domain = "kabucom"
+        req.session!.token = result.data
+        req.session!.access_token_expires = new Date(Date.now() + result.data["expires_in"] * 1000)
+        req.session?.save((err) => {
+          if (!err) {
+            res.cookie("authenticated", "0")
+            res.redirect("/kabucom")
+          } else {
+            res.status(400).json({ message: err })
+          }
+        })
+      })
+        .catch((err) => {
+          const message = err.response ? err.response.data.error_description || err.response.message : err.message
+          res.status(400).json({ message })
+        });
     });
 
     server.get("/api/login/google", (_req, res) => {
@@ -224,7 +222,6 @@ app.prepare()
     });
 
     server.get("/oauth2/callback/google", async (req, res) => {
-      // getTokenKabucom(req, res);
       const code = req.query.code ? req.query.code.toString() : ""
       try {
         const result = await google.getAccessTokenFromCode(code)
@@ -234,29 +231,17 @@ app.prepare()
         req.session!.domain = "google"
         req.session!.token = result.data
         req.session!.access_token_expires = new Date(Date.now() + result.data["expires_in"] * 1000)
-        console.log(req.session)
-        res.cookie("session", "1")
-        res.redirect("/")
+        req.session?.save((err) => {
+          if (!err) {
+            res.cookie("authenticated", "2")
+            res.redirect("/googleapis")
+          } else {
+            res.status(400).json({ message: err })
+          }
+        })
       } catch (err) {
         res.status(400).json({ message: err.message })
       }
-
-    });
-
-    server.get("/oauth2/v2/userinfo", async (req, res) => {
-      try {
-      const { data } = await axios({
-        url: 'https://www.googleapis.com/oauth2/v2/userinfo',
-        method: 'get',
-        headers: {
-          Authorization: `Bearer ${req.session!.token["access_token"]}`,
-        },
-      });
-      // console.log(data); // { id, email, given_name, family_name }
-      res.status(200).send(data)
-    } catch (err) {
-      res.status(400).json({ message: err.message })
-    }
     });
 
     // Default catch-all handler to allow Next.js to handle all other routes

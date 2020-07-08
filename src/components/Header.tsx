@@ -1,28 +1,33 @@
-import Link from 'next/link';
-import { useIsAuthenticated } from '../providers/Auth';
+import Link from "next/link";
+import { useUserType, useIsAuthenticated } from "../providers/Auth";
 
 export default function Header() {
   const isAuthenticated = useIsAuthenticated();
+  const userType = useUserType();
   return (
     <header>
       <Link href="/">
         <a>Home</a>
-      </Link>{' '}
-      |{' '}
+      </Link>{" "}
+      |{" "}
       {isAuthenticated ? (
         <>
-        <Link href="/profile">
-            <a>Profile</a>
-          </Link>{' '}
-          |{' '}
-          <Link href="/kabucom">
-            <a>Kabucom APIs</a>
-          </Link>{' '}
-          |{' '}
-          <Link href="/googleapis">
-            <a>Google APIs</a>
-          </Link>{' '}
-          |{' '}
+          {(userType === 0 || userType === 1) && (
+            <>
+              <Link href="/kabucom">
+                <a>Kabucom APIs</a>
+              </Link>{" "}
+              |{" "}
+            </>
+          )}
+          {userType === 2 && (
+            <>
+              <Link href="/googleapis">
+                <a>Google APIs</a>
+              </Link>{" "}
+              |{" "}
+            </>
+          )}
           <Link href="/logout">
             <a>Logout</a>
           </Link>
