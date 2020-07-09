@@ -1,4 +1,5 @@
 import next from "next";
+import * as http from 'http';
 import express from "express";
 import { createProxyMiddleware, Options } from "http-proxy-middleware";
 import session from "express-session";
@@ -23,7 +24,7 @@ const dynamodbOptions = {
   AWSConfigJSON: {
     accessKeyId: process.env.ACCESS_KEY_ID,
     secretAccessKey: process.env.SECRET_ACCESS_KEY,
-    region: 'ap-northeast-1'
+    region: process.env.AWS_REGION
   },
 
   // Optional ProvisionedThroughput params, defaults to 5
@@ -40,6 +41,18 @@ interface ICustomProxy {
 const MESSAGES = {
   error404: "The request has not been applied because it lacks valid authentication credentials for the target resource."
 }
+
+const handleOnProxyRequest = (proxyReq: http.ClientRequest, req: express.Request, res: express.Response) => {
+  // add custom header to request
+  proxyReq.setHeader("accept", "*/*");
+  proxyReq.setHeader("x-api-key", CLIENT_INFO.apiKey);
+  if (req.session!.token) {
+    proxyReq.setHeader("authorization", `Bearer ${req.session!.token["access_token"]}`);
+  } else {
+    res.status(401).json({ message: MESSAGES.error404 })
+  }
+}
+
 
 const customProxies: ICustomProxy[] = [
   {
@@ -65,16 +78,7 @@ const customProxies: ICustomProxy[] = [
         return path.replace('/api/kabucom', '');
       },
       changeOrigin: true,
-      onProxyReq: (proxyReq, req, res) => {
-        // add custom header to request
-        proxyReq.setHeader("accept", "*/*");
-        proxyReq.setHeader("x-api-key", CLIENT_INFO.apiKey);
-        if (req.session!.token) {
-          proxyReq.setHeader("authorization", `Bearer ${req.session!.token["access_token"]}`);
-        } else {
-          res.status(401).json({ message: MESSAGES.error404 })
-        }
-      },
+      onProxyReq: handleOnProxyRequest,
       logLevel: "debug"
     }
   },
@@ -111,37 +115,29 @@ const customProxies: ICustomProxy[] = [
         return path.replace('/api/google', '');
       },
       changeOrigin: true,
-      onProxyReq: (proxyReq, req, res) => {
-        // add custom header to request
-        proxyReq.setHeader("accept", "*/*");
-        proxyReq.setHeader("x-api-key", CLIENT_INFO.apiKey);
-        if (req.session!.token) {
-          proxyReq.setHeader("authorization", `Bearer ${req.session!.token["access_token"]}`);
-        } else {
-          res.status(401).json({ message: MESSAGES.error404 })
-        }
-      },
+      onProxyReq: handleOnProxyRequest,
       logLevel: "debug"
     }
   },
 ]
 
+const sessionOptions: session.SessionOptions = {
+  secret: 'supper_power_secret',
+  store,
+  proxy: true,
+  resave: false,
+  saveUninitialized: false,
+  cookie: {
+    secure: !dev,
+    httpOnly: !dev,
+    maxAge: SESSION_MAX_AGE
+  },
+}
+
 app.prepare()
   .then(() => {
     // Set up session
-    server.use(
-      session({
-        secret: 'supper_power_secret',
-        store,
-        proxy: true,
-        resave: false,
-        cookie: {
-          secure: !dev,
-          httpOnly: !dev,
-          maxAge: SESSION_MAX_AGE
-        },
-      })
-    )
+    server.use(session(sessionOptions))
     // Set up the proxy.
     if (customProxies) {
       customProxies.forEach((proxy) => {
@@ -170,51 +166,59 @@ app.prepare()
 
     server.get("/oauth2/callback", (req, res) => {
       const code = req.query.code ? req.query.code.toString() : ""
-      const getToken = oauth2.getTokenFromCode(code)
-      getToken.then((result) => {
-        const hour = SESSION_MAX_AGE
-        req.session!.cookie.expires = new Date(Date.now() + hour)
-        req.session!.cookie.maxAge = hour
-        req.session!.domain = "kabucom"
-        req.session!.token = result.data
-        req.session!.access_token_expires = new Date(Date.now() + result.data["expires_in"] * 1000)
-        req.session?.save((err) => {
-          if (!err) {
-            res.cookie("authenticated", "1")
-            res.redirect("/kabucom")
-          } else {
-            res.status(400).json({ message: err })
-          }
+      try {
+        const getToken = oauth2.getTokenFromCode(code)
+        getToken.then((result) => {
+          const hour = SESSION_MAX_AGE
+          req.session!.cookie.expires = new Date(Date.now() + hour)
+          req.session!.cookie.maxAge = hour
+          req.session!.domain = "kabucom"
+          req.session!.token = result.data
+          req.session!.access_token_expires = new Date(Date.now() + result.data["expires_in"] * 1000)
+          req.session?.save((err) => {
+            if (!err) {
+              res.cookie("authenticated", "1")
+              res.redirect("/kabucom")
+            } else {
+              res.status(400).json({ message: err })
+            }
+          })
         })
-      })
-        .catch((err) => {
-          const message = err.response ? err.response.data.error_description || err.response.message : err.message
-          res.status(400).json({ message })
-        });
+          .catch((err) => {
+            const message = err.response ? err.response.data.error_description || err.response.message : err.message
+            res.status(400).json({ message })
+          });
+      } catch (err) {
+        res.status(500).json({ message: err.message })
+      }
     });
 
     server.get("/api/login/guest", (req, res) => {
-      const getToken = oauth2.getTokenByClientCredential();
-      getToken.then((result) => {
-        const hour = SESSION_MAX_AGE
-        req.session!.cookie.expires = new Date(Date.now() + hour)
-        req.session!.cookie.maxAge = hour
-        req.session!.domain = "kabucom"
-        req.session!.token = result.data
-        req.session!.access_token_expires = new Date(Date.now() + result.data["expires_in"] * 1000)
-        req.session?.save((err) => {
-          if (!err) {
-            res.cookie("authenticated", "0")
-            res.redirect("/kabucom")
-          } else {
-            res.status(400).json({ message: err })
-          }
+      try {
+        const getToken = oauth2.getTokenByClientCredential();
+        getToken.then((result) => {
+          const hour = SESSION_MAX_AGE
+          req.session!.cookie.expires = new Date(Date.now() + hour)
+          req.session!.cookie.maxAge = hour
+          req.session!.domain = "kabucom"
+          req.session!.token = result.data
+          req.session!.access_token_expires = new Date(Date.now() + result.data["expires_in"] * 1000)
+          req.session?.save((err) => {
+            if (!err) {
+              res.cookie("authenticated", "0")
+              res.redirect("/kabucom")
+            } else {
+              res.status(400).json({ message: err })
+            }
+          })
         })
-      })
-        .catch((err) => {
-          const message = err.response ? err.response.data.error_description || err.response.message : err.message
-          res.status(400).json({ message })
-        });
+          .catch((err) => {
+            const message = err.response ? err.response.data.error_description || err.response.message : err.message
+            res.status(400).json({ message })
+          });
+      } catch (err) {
+        res.status(500).json({ message: err.message })
+      }
     });
 
     server.get("/api/login/google", (_req, res) => {
@@ -240,7 +244,7 @@ app.prepare()
           }
         })
       } catch (err) {
-        res.status(400).json({ message: err.message })
+        res.status(500).json({ message: err.message })
       }
     });
 

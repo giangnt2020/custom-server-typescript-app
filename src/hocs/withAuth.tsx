@@ -17,7 +17,7 @@ export default function withAuth<CP, IP>(
       return !useIsAuthenticated();
     },
     serverCondition: function withAuthServerCondition(ctx) {
-      return !ctx.req?.cookies.authenticated;
+      return !ctx.req?.cookies["connect.sid"] && !ctx.req?.cookies.authenticated;
     }
   });
 }
