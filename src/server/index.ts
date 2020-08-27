@@ -62,8 +62,7 @@ const customProxies: ICustomProxy[] = [
       pathRewrite: async (path, req) => {
         const expires = new Date(req.session!.access_token_expires);
         const current = new Date();
-        const cookiesExpires = new Date(req.session!.cookie.expires.toString());
-        if (current < cookiesExpires && current >= expires && req.session!.token["refresh_token"]) {
+        if (current >= expires && req.session!.token["refresh_token"]) {
           try {
             const getNewAccessToken = await oauth2.refreshToken(req.session!.token["refresh_token"])
             if (getNewAccessToken.data && getNewAccessToken.data["expires_in"]) {
@@ -130,7 +129,6 @@ const sessionOptions: session.SessionOptions = {
   cookie: {
     secure: !dev,
     httpOnly: !dev,
-    maxAge: SESSION_MAX_AGE
   },
 }
 
@@ -169,9 +167,9 @@ app.prepare()
       try {
         const getToken = oauth2.getTokenFromCode(code)
         getToken.then((result) => {
-          const hour = SESSION_MAX_AGE
-          req.session!.cookie.expires = new Date(Date.now() + hour)
-          req.session!.cookie.maxAge = hour
+          // const hour = SESSION_MAX_AGE
+          // req.session!.cookie.expires = new Date(Date.now() + hour)
+          // req.session!.cookie.maxAge = hour
           req.session!.domain = "kabucom"
           req.session!.token = result.data
           req.session!.access_token_expires = new Date(Date.now() + result.data["expires_in"] * 1000)
@@ -197,10 +195,10 @@ app.prepare()
       try {
         const getToken = oauth2.getTokenByClientCredential();
         getToken.then((result) => {
-          const hour = SESSION_MAX_AGE
-          req.session!.cookie.expires = new Date(Date.now() + hour)
-          req.session!.cookie.maxAge = hour
-          req.session!.domain = "kabucom"
+          // const hour = SESSION_MAX_AGE
+          // req.session!.cookie.expires = new Date(Date.now() + hour)
+          // req.session!.cookie.maxAge = hour
+          // req.session!.domain = "kabucom"
           req.session!.token = result.data
           req.session!.access_token_expires = new Date(Date.now() + result.data["expires_in"] * 1000)
           req.session?.save((err) => {

@@ -9,16 +9,16 @@ export const base64URLEncode = (str: any) => {
         .replace(/\//g, '_')
         .replace(/=/g, '');
 }
+
 export const sha256 = (buffer: any) => {
     return crypto.createHash('sha256').update(buffer).digest();
 }
 
+export const generateChallengeCode = (codeVerifier: any) => { return base64URLEncode(sha256(codeVerifier)); }
+
 export const generateState = () => {
     return crypto.randomBytes(20).toString("hex");
 }
-
-
-export const generateChallengeCode = (codeVerifier: any) => { return base64URLEncode(sha256(codeVerifier)); }
 
 export const getTokenURI = () => {
     const { tokenHost, tokenPath } = CLIENT_INFO
@@ -27,8 +27,17 @@ export const getTokenURI = () => {
 
 export const getAuthenticationURI = () => {
     const { clientId, authorizeHost, authorizePath, callbackUrl, scope } = CLIENT_INFO
-    const state = generateState()
-    return `${authorizeHost}${authorizePath}?client_id=${clientId}&scope=${scope}&code_challenge=${generateChallengeCode(verifierCode)}&redirect_uri=${callbackUrl}&code_challenge_method=S256&state=${state}&response_type=code&prompt=login`
+    const authParams = qs.stringify({
+        client_id: clientId,
+        scope,
+        code_challenge: generateChallengeCode(verifierCode),
+        code_challenge_method: "S256",
+        redirect_uri: callbackUrl,
+        state: generateState(),
+        response_type: "code",
+        prompt: "login"
+    })
+    return `${authorizeHost}${authorizePath}?${authParams}`
 }
 
 export const getTokenFromCode = (code: string): AxiosPromise<any> => {
